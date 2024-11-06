@@ -1,10 +1,15 @@
 library(tidyverse)
 library(ggplot2)
 library(gridExtra)
-#source("R/plotting.funcs.R")
+source("R/plotting.funcs.R")
 source('R/misc_funcs.R')
-#load("data/color.palettes.rda")
+load("data/model.params.rda")
 load('data/age_and_methylation_data.rdata')
+
+model.params <- model.params |> 
+  rename(sites = site.select.regr.meth) |> 
+  mutate(minCR = paste0('minCR', training.cr),
+         site.select.cr = paste0('cr', site.select.cr))
 
 # subset all data
 age.df <- age.df |>  
@@ -18,12 +23,14 @@ wts.2.use <- c('CR', 'ci.wt', 'none')
 
 res.files <- 
   lapply(c('svm', 'gam', 'glmnet', 'rf'), function(m){
-  fnames <- c(list.files(paste0('R/', m), pattern = paste0(m, '_minCR')))
-#              list.files(paste0('R/', m), pattern = paste0(m, '_ranAge')))
+  fnames <- c(list.files(paste0('R/', m), pattern = paste0(m, '_best')))
+#              list.files(paste0('R/', m), pattern = paste0(m, '_best')))
       bind_cols(fnames, do.call(rbind, strsplit(fnames, split = '_')))
 }) |> bind_rows()
-names(res.files) <- c('fname', 'method', 'minCR', 'sites', 'site.select.cr', 'age.transform', 'weight')
+names(res.files) <- c('fname', 'method', 'resample', 'minCR', 'sites', 'site.select.cr', 'age.transform', 'weight')
 res.files$weight <- substr(res.files$weight, 1, nchar(res.files$weight) - 4)
+res.files <- left_join(res.files, select(model.params, -training.cr)) |> 
+  relocate(model)
 
 pred <- 
   left_join(
@@ -34,23 +41,23 @@ pred <-
   by = 'fname'
 ) |> 
   filter(weight %in% wts.2.use, sites %in% sites.2.use) |> 
-  group_by(method, age.transform, sites, weight, minCR, site.select.cr, swfsc.id) |> 
+  group_by(model, method, age.transform, sites, weight, minCR, site.select.cr, swfsc.id) |> 
   summarise(age.pred = modeest::venter(age.pred)) |> 
   left_join(select(age.df, c(swfsc.id, age.best))) |> 
   mutate(resid = age.pred - age.best,
          dev = abs(resid),
          sq.err = resid ^ 2,
-         model = paste(minCR, sites, site.select.cr, age.transform, weight, sep = '_'),
+#         model = paste(minCR, sites, site.select.cr, age.transform, weight, sep = '_'),
          best.age.bin = ifelse(age.best < 10, 0, ifelse(age.best < 25, 10, 25)),
          pred.age.bin = ifelse(age.pred < 10, 0, ifelse(age.pred < 25, 10, 25))
-  ) 
+  )
 
 MAE.all <- 
   left_join(
     pred |> 
       left_join(age.df) |> 
       filter(age.confidence %in% c(4,5)) |> 
-      group_by(method, sites, weight, minCR, site.select.cr, age.transform) |> 
+      group_by(model, method, sites, weight, minCR, site.select.cr, age.transform) |> 
   summarise(MAE = round(median(dev), 2),
                 lci = round(quantile(dev, probs = c(.25)),2),
                 uci = round(quantile(dev, probs = c(.75)),2),
@@ -59,7 +66,7 @@ MAE.all <-
     pred |> 
       left_join(age.df) |> 
       filter(age.confidence %in% c(4,5)) |> 
-      group_by(method, sites, weight, minCR, site.select.cr, age.transform, best.age.bin) |> 
+      group_by(model, method, sites, weight, minCR, site.select.cr, age.transform, best.age.bin) |> 
       summarise(MAE = round(median(dev), 2),
                 mean.resid = round(mean(resid), 2)) |> 
       pivot_wider(names_from = best.age.bin, values_from = c(MAE, mean.resid))
@@ -70,18 +77,18 @@ write.csv(MAE.all, file = 'results_raw/MAE.all.csv')
 # Plot the results of the base model for each method
 
 df <- pred |> 
-  filter(model == 'best_minCR4_RFsites_ln_none') |> 
+  filter((model == 21 & method == 'svm') | (model == 75 & method == 'gam')) |> 
   left_join(age.df) |> 
   mutate(#mode = factor(model, levels = best.models, ordered = TRUE),
-         method = factor(method, levels = c('gam', 'svm', 'glmnet', 'rf')))
-plot.titles <- data.frame(label = c('gam', 'glmnet', 'rf', 'svm'), title = c('GAM', 'ENR', 'RF', 'SVM'))
-base.plot <- lapply(c('gam', 'svm', 'glmnet', 'rf'), function(m){
+         method = factor(method, levels = c('gam', 'svm')))
+plot.titles <- data.frame(label = c('gam', 'svm'), title = c('GAM', 'SVM'))
+base.plot <- lapply(c('gam', 'svm'), function(m){
   p <- plot.loov.res(filter(df, method == m), min.CR = 4)$p.loov + 
     ggtitle(plot.titles$title[which(plot.titles$label == m)]) 
   return(p)
 })
-names(base.plot) <- c('GAM', 'SVM', 'ENR', 'RF')
-base.plot$nrow = 4
+names(base.plot) <- c('GAM', 'SVM')
+base.plot$nrow = 2
 jpeg(file = 'R/summaries/base.model.plot.jpg', width = 600, height = 1200)
 do.call(grid.arrange, base.plot)
 dev.off()

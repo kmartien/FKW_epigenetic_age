@@ -1,6 +1,7 @@
 library(tidyverse)
 library(glmnet)
 source('R/misc_funcs.R')
+source('R/tuning_funcs.R')
 load("data/age_and_methylation_data.rdata")
 
 nrep <- 1000
@@ -18,33 +19,33 @@ model.df <- age.df |>
   column_to_rownames('swfsc.id') 
   
 
-# standard 10-fold cv.glmnet run at given alpha
-CVglmnet10K <- function(df, sites, age.transform, alpha) {
-  if (age.transform == 'ln') df$age.best <- log(df$age.best)
-  cv.glmnet(
-    x = as.matrix(df[, sites]),
-    y = df$age.best,
-    weights = df$wt,
-    alpha = alpha,
-  ) 
-}
-
+# # standard 10-fold cv.glmnet run at given alpha
+# CVglmnet10K <- function(df, sites, age.transform, alpha) {
+#   if (age.transform == 'ln') df$age.best <- log(df$age.best)
+#   cv.glmnet(
+#     x = as.matrix(df[, sites]),
+#     y = df$age.best,
+#     weights = df$wt,
+#     alpha = alpha,
+#   ) 
+# }
+# 
 # return median cvm at minimum lambda for alpha and nrep replicates
-median.cvm.min <- function(alpha, df, sites, age.transform, nrep) {
-  parallel::mclapply(1:nrep, function(i) {
-    cv.fit <- tryCatch({
-      CVglmnet10K(df, sites, age.transform, alpha)
-    }, error = function(e) NULL)
-    if(is.null(cv.fit)) NA else {
-      predicted.age <- predict(cv.fit, as.matrix(df[,sites]), s = 'lambda.min')
-      if(age.transform == 'ln') predicted.age <- exp(predicted.age)
-      median(abs(df$age.best - exp(predict(cv.fit, as.matrix(df[,sites]), s = 'lambda.min'))))
-#      cv.fit$cvm[cv.fit$lambda == cv.fit$lambda.min]
-    } 
-  }, mc.cores = 6) |> 
-    unlist() |> 
-    median(na.rm = TRUE)
-}
+# median.cvm.min <- function(alpha, df, sites, age.transform, nrep) {
+#   parallel::mclapply(1:nrep, function(i) {
+#     cv.fit <- tryCatch({
+#       CVglmnet10K(df, sites, age.transform, alpha)
+#     }, error = function(e) NULL)
+#     if(is.null(cv.fit)) NA else {
+#       predicted.age <- predict(cv.fit, as.matrix(df[,sites]), s = 'lambda.min')
+#       if(age.transform == 'ln') predicted.age <- exp(predicted.age)
+#       median(abs(df$age.best - exp(predict(cv.fit, as.matrix(df[,sites]), s = 'lambda.min'))))
+# #      cv.fit$cvm[cv.fit$lambda == cv.fit$lambda.min]
+#     } 
+#   }, mc.cores = 6) |> 
+#     unlist() |> 
+#     median(na.rm = TRUE)
+# }
 
 glmnet.optim <- do.call(rbind, lapply(c(2, 3, 4), function(minCR){
   do.call(rbind, lapply(weight.schemes, function(weight){

@@ -3,6 +3,7 @@ library(tidyverse)
 library(randomForest)
 library(rfPermute)
 source('R/misc_funcs.R')
+source('R/tuning_funcs.R')
 load("data/age_and_methylation_data.rdata")
 
 ntree <- 1000
@@ -12,37 +13,37 @@ age.transform <- c('ln')
 
 age.df$ci.wt <- calc.ci.wt(age.df)
 
-#' run randomForest over sampsize and mtry grid and report deviance stats
-rf.param.grid.search <- function(df, sites, age.transform, ntree){
-  # grid of sampsize and mtry to optimize MSE over
-  params <- expand.grid(
-    sampsize = seq(round(nrow(model.df)*.3), round(nrow(model.df)*.7), by = 1), 
-    mtry = seq(round(length(sites)*.2), round(length(sites)*.5), by = 1), 
-    KEEP.OUT.ATTRS = FALSE
-  )
-  
-  parallel::mclapply(1:nrow(params), function(i){
-    if(age.transform == 'ln') df$age.best <- log(df$age.best)
-    rf <- randomForest(
-      y = df$age.best,
-      x = df[, sites.to.keep],
-      mtry = params$mtry[i],
-      ntree = ntree,
-      sampsize = params$sampsize[i],
-      replace = FALSE
-    )
-    data.frame( 
-      sampsize = params$sampsize[i],
-      mtry = params$mtry[i],
-      mse = rf$mse[length(rf$mse)],
-      rsq = rf$rsq[length(rf$rsq)],
-      pct.var = 100 * rf$rsq[length(rf$rsq)]
-    )
-  }, mc.cores = 6) |> 
-    bind_rows() |> 
-    as.data.frame()
-}
-
+#' #' run randomForest over sampsize and mtry grid and report deviance stats
+#' rf.param.grid.search <- function(df, sites, age.transform, ntree){
+#'   # grid of sampsize and mtry to optimize MSE over
+#'   params <- expand.grid(
+#'     sampsize = seq(round(nrow(model.df)*.3), round(nrow(model.df)*.7), by = 1), 
+#'     mtry = seq(round(length(sites)*.2), round(length(sites)*.5), by = 1), 
+#'     KEEP.OUT.ATTRS = FALSE
+#'   )
+#'   
+#'   parallel::mclapply(1:nrow(params), function(i){
+#'     if(age.transform == 'ln') df$age.best <- log(df$age.best)
+#'     rf <- randomForest(
+#'       y = df$age.best,
+#'       x = df[, sites.to.keep],
+#'       mtry = params$mtry[i],
+#'       ntree = ntree,
+#'       sampsize = params$sampsize[i],
+#'       replace = FALSE
+#'     )
+#'     data.frame( 
+#'       sampsize = params$sampsize[i],
+#'       mtry = params$mtry[i],
+#'       mse = rf$mse[length(rf$mse)],
+#'       rsq = rf$rsq[length(rf$rsq)],
+#'       pct.var = 100 * rf$rsq[length(rf$rsq)]
+#'     )
+#'   }, mc.cores = 6) |> 
+#'     bind_rows() |> 
+#'     as.data.frame()
+#' }
+#' 
 model.df <- age.df |>
   filter(swfsc.id %in% ids.to.keep) |>
   left_join(

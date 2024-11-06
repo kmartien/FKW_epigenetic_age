@@ -18,7 +18,7 @@ age.df <- age.df |>
   column_to_rownames('swfsc.id') 
 
 #------------------------------------------------------------------------
-RFsites.ln <- do.call(rbind, lapply(10:nrow(rf.params), function(i){
+RFsites <- do.call(rbind, lapply(1:nrow(rf.params), function(i){
   print(i)
   print(date())
   minCR <- rf.params$CR[i]
@@ -61,4 +61,4 @@ RFsites.ln <- do.call(rbind, lapply(10:nrow(rf.params), function(i){
   return(bind_cols(rp, cr = minCR, wt = weight))
 }))
 
-saveRDS(RFsites.ln, 'R/rf_tuning/rf_chosen_sites.ln.rds')
+saveRDS(RFsites, 'R/rf_tuning/rf_chosen_sites.rds')

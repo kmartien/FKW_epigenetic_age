@@ -149,17 +149,17 @@ calc.ci.wt <- function(model.df, ndraws = 1000){
     pull(ci.wt)
 }
 
-selectCpGsites <- function(sites.2.use, minCR, weight){
+selectCpGsites <- function(sites.2.use, site.select.cr, weight, age){
   if(sites.2.use == 'RFsites'){
     # select important sites from Random Forest tuned with all samples
     chosen.sites <- readRDS('R/rf_tuning/rf_chosen_sites.rds') |>
-      filter(cr == minCR & wt == weight & pval <= 0.05) |>
+      filter(cr == site.select.cr & wt == weight & age.transform == age & pval <= 0.05) |>
       pull('loc.site')
   }
   if(sites.2.use == 'glmnet'){
     # select chosen sites from glmnet tuned with all samples, alpha = 0.5
-    chosen.sites <- readRDS('R/glmnet_tuning/glmnet.chosen.sites.rds') |> 
-      filter(cr == minCR & wt == weight & count >= 500 & sites != '(Intercept)') |> 
+    chosen.sites <- readRDS('R/glmnet_tuning/glmnet.chosen.sites.rds') |>
+      filter(cr == site.select.cr & wt == weight & age.transform == age & count >= 500 & sites != '(Intercept)') |>
       pull('sites')
   }
   return(chosen.sites)

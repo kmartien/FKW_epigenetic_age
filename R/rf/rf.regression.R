@@ -8,14 +8,17 @@ load("data/age_and_methylation_data.rdata")
 load("data/model.params.rda")
 
 nrep <- 1000
+ntree <- 5000
 ncores <- 10
+
+model.params <- filter(model.params, num.sites > 100)
 
 age.df <- age.df |>  
   filter(swfsc.id %in% ids.to.keep)
 
 age.df$ci.wt <- calc.ci.wt(age.df)
 
-lapply(1:nrow(model.params), function(i){
+lapply(10:nrow(model.params), function(i){
   print(i)
   print(date())
   params <- model.params[i,]
@@ -44,68 +47,41 @@ lapply(1:nrow(model.params), function(i){
   # age prediction
   train.df <- filter(model.df, age.confidence >= minCR)
 
-  if(file.exists(file = paste0('R/glmnet_tuning/optim_alpha_', description, '.rds'))){
-    opt.alpha <- readRDS(paste0('R/glmnet_tuning/optim_alpha_', description, '.rds'))
+  if(file.exists(file = paste0('R/rf_tuning/rf_optim_params_', description, '.rda'))){
+    load(paste0('R/rf_tuning/rf_optim_params_', description, '.rda'))
   } else {
-    param.df  <- rf.param.grid.search(model.df, sites, age, ntree)
+    param.df  <- rf.param.grid.search(train.df, sites, age.transform, ntree)
     save(param.df, file = paste0('R/rf_tuning/rf_optim_params_', description, '.grid.search.rda'))
+    rf.params <- filter(param.df, mse == min(param.df$mse)) |>
+      select(c(mtry, sampsize))
+    save(rf.params, file = paste0('R/rf_tuning/rf_optim_params_', description, '.rda'))
   }
-  rf.data.age <- select(data.complete, -c(id, wt))
-  wt <- data.complete$wt
   
-  date()
-  rf.age <- rfPermute(
-    age.best ~ .,
-    rf.data.age,
-    ntree = 2000,
-    num.rep = 2,
-    weights = wt
-  )
-  date()
-  data.complete$predicted.age <- rf.age$rf$predicted
-  rf.res <- select(data.complete, c(id, age.best, wt, predicted.age)) %>% 
-    left_join(select(all.samples, c(id, sex, age.confidence))) %>% 
-    mutate(error = predicted.age - age.best)
+  # Best age and methylation estimates --------------------------------------
   
-  mae <- do.call(rbind, lapply(training.min.CR:5, function(cr){
-    x <- filter(rf.res, age.confidence == cr)
-    age.error <- mutate(x, age.error = abs(error)) %>%
-      select(age.error) 
-    cor.coeff <- round(cor.test(x$age.best, x$predicted.age, method = "pearson")$estimate,2)
-    return(c(CR = cr, MAE = median(age.error$age.error), corr = cor.coeff))
-  }))
+  print('Best')
+  pred <- if(minCR == 2) {
+    # OOB predictions for training samples
+    predictTestRF(fit = NULL, train.df, sites, 'age.best', rf.params, age.transform)
+  } else {
+    predictAllIDsRF(train.df, model.df, sites, 'age.best', rf.params, age.transform)  
+  }
+  saveRDS(pred, paste0('R/rf/rf_best_minCR', minCR, '_', sites.2.use,'_cr', site.select.cr, '_', age.transform, '_', weight, '.rds'))
   
-  write.csv(mae, file =paste0("results-raw/rf.mae-", description, ".csv"))
-  
-  save(rf.age, rf.res, mae, file = paste0("results/rf.regression-", description, ".rda"))
-  
-  # ImpData <- as.data.frame(importance(rf.age$rf)) %>% filter(`%IncMSE` > 0)
-  # ImpData$Var.Names <- row.names(ImpData)
-  # 
-  # ggplot(ImpData, aes(x=Var.Names, y=`%IncMSE`)) +
-  #   geom_segment( aes(x=Var.Names, xend=Var.Names, y=0, yend=`%IncMSE`), color="skyblue") +
-  #   geom_point(aes(size = IncNodePurity), color="blue", alpha=0.6) +
-  #   theme_light() +
-  #   coord_flip() +
-  #   theme(
-  #     legend.position="bottom",
-  #     panel.grid.major.y = element_blank(),
-  #     panel.border = element_blank(),
-  #     axis.ticks.y = element_blank()
-  #   )
-  # 
-  # error.hist <- loov.hist(rf.res, min.cr = 2)
-  # jpeg(filename = paste0("results-raw/rf.regression.error.histogram", description, ".jpg"))
-  # error.hist
-  # dev.off()
-  # 
-  # jpeg(filename = paste0("results-raw/rf.regression.plot.", description, ".jpg"))
-  # plot.loov.res(rf.res, min.CR = 2)
-  # dev.off()
-  # 
-  #imp <- rownames_to_column(data.frame(rf.age$rf$importance), var = "site") %>% select(-IncNodePurity)
-  #jpeg(filename = paste0("results-raw/rf.regression.site.importance.", description, ".jpg"))
-  #plot.site.importance(imp)
-  #dev.off()
-})
+  # Random age and random methylation estimates -----------------------------
 
+  # print('RanAgeMeth')
+  # pred.ranAgeMeth <- parallel::mclapply(1:nrep, function(j) {
+  #   # random sample of ages and methylation
+  #   ran.df <- sampleAgeMeth(age.df, logit.meth.normal.params)
+  #   
+  #   if(minCR == 2) {
+  #     # OOB predictions for training samples
+  #     predictTestRF(fit = NULL, ran.df, sites, 'age.ran', age.transform)
+  #   } else {
+  #     predictAllIDsRF(filter(ran.df, age.confidence >= minCR), ran.df, sites, 'age.ran', rf.params, age.transform)
+  #   }
+  # }, mc.cores = ncores) |>
+  #   bind_rows()
+  # saveRDS(pred.ranAgeMeth, paste0('R/rf/rf_ranAgeMeth_minCR', minCR, '_', sites.2.use,'_cr', site.select.cr, '_', age.transform, '_', weight, '.rds'))
+})

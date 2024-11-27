@@ -63,10 +63,10 @@ glmnet.optim <- do.call(rbind, lapply(c(2, 3, 4), function(minCR){
       sites <- sites.to.keep
       if(sites.2.use != 'Allsites') sites <- selectCpGsites(sites.2.use)
       
-      #  find optimal alpha (lowest median cvm at minimum lambda)
+      #  find optimal alpha (lowest median MAE at minimum lambda)
       opt.alpha <- optim(
         par = c(alpha = 0.3),
-        fn = median.cvm.min,
+        fn = median.MAE.min,
         method = "Brent",
         lower = 0.001,
         upper = 0.999,

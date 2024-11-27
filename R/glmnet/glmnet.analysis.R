@@ -9,12 +9,14 @@ load("data/model.params.rda")
 nrep <- 1000
 ncores <- 10
 
+model.params <- filter(model.params, weight == 'ci.wt')
+
 age.df <- age.df |>  
   filter(swfsc.id %in% ids.to.keep)
 
 age.df$ci.wt <- calc.ci.wt(age.df)
 
-lapply(45:nrow(model.params), function(i){
+lapply(1:nrow(model.params), function(i){
   print(i)
   print(date())
   params <- model.params[i,]
@@ -43,7 +45,7 @@ lapply(45:nrow(model.params), function(i){
   # age prediction
   train.df <- filter(model.df, age.confidence >= minCR)
   
-  #  find optimal alpha (lowest median cvm at minimum lambda)
+  # find optimal alpha (lowest median cvm at minimum lambda)
   if(file.exists(file = paste0('R/glmnet_tuning/optim_alpha_', description, '.rds'))){
     opt.alpha <- readRDS(paste0('R/glmnet_tuning/optim_alpha_', description, '.rds'))
   } else {

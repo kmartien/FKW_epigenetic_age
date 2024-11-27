@@ -71,6 +71,7 @@ MAE.all <-
                 mean.resid = round(mean(resid), 2)) |> 
       pivot_wider(names_from = best.age.bin, values_from = c(MAE, mean.resid))
   )
+
 write.csv(MAE.all, file = 'results_raw/MAE.all.csv')
 
 # Base model box plot -----------------------------------------------
@@ -320,8 +321,8 @@ breaks <- c(0,10,25,40)
 pred.GAM.ranAgeMeth <- 
   pred.ran |> 
   left_join(age.df) |> 
-  filter(method == 'gam',
-         model == 'ranAgeMeth_minCR4_RFsites_ln_none') |> 
+  filter(method == 'svm',
+         model == 21) |> 
   mutate(best.age.bin = ifelse(age.best < 10, 0, ifelse(age.best < 25, 10, 25)),
          pred.age.bin = ifelse(age.pred < 10, 0, ifelse(age.pred < 25, 10, 25)))
 MAE.by.age <- 
@@ -350,7 +351,7 @@ GAM.ranAgeMeth.plot <- pred.GAM.ranAgeMeth |>
   geom_segment(aes(x = age.best, xend = age.best, y = lower, yend = upper, color = age.confidence), alpha = 0.5, position = 'jitter') +
   geom_segment(aes(x = age.min, xend = age.max, y = age.pred, yend = age.pred, color = age.confidence), alpha = 0.5, position = 'jitter') +
   geom_abline(slope = 1, color = "black", linewidth = 0.5, linetype = 2) +
-  scale_color_manual(values = conf.palette, name = "Confidence") +
+  scale_color_manual(values = conf.colors, name = "Confidence") +
   labs(x = "Age.best", y = "Predicted age") +
 #  xlim(0,40) + ylim(0,58) +
   facet_wrap(~age.confidence, nrow = 2) +

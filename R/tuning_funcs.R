@@ -10,8 +10,8 @@ CVglmnet10K <- function(df, sites, age.transform, alpha) {
   ) 
 }
 
-# return glmnet median cvm at minimum lambda for alpha and nrep replicates
-median.cvm.min <- function(alpha, df, sites, age.transform, nrep) {
+# return glmnet median MAE at minimum lambda for alpha and nrep replicates
+median.MAE.min <- function(alpha, df, sites, age.transform, nrep) {
   parallel::mclapply(1:nrep, function(i) {
     cv.fit <- tryCatch({
       CVglmnet10K(df, sites, age.transform, alpha)
@@ -20,7 +20,6 @@ median.cvm.min <- function(alpha, df, sites, age.transform, nrep) {
       predicted.age <- predict(cv.fit, as.matrix(df[,sites]), s = 'lambda.min')
       if(age.transform == 'ln') predicted.age <- exp(predicted.age)
       median(abs(df$age.best - exp(predict(cv.fit, as.matrix(df[,sites]), s = 'lambda.min'))))
-      #      cv.fit$cvm[cv.fit$lambda == cv.fit$lambda.min]
     } 
   }, mc.cores = 6) |> 
     unlist() |> 
@@ -31,7 +30,7 @@ median.cvm.min <- function(alpha, df, sites, age.transform, nrep) {
 rf.param.grid.search <- function(df, sites, age.transform, ntree){
   # grid of sampsize and mtry to optimize MSE over
   params <- expand.grid(
-    sampsize = seq(round(nrow(model.df)*.3), round(nrow(model.df)*.7), by = 1), 
+    sampsize = seq(round(nrow(df)*.3), round(nrow(df)*.7), by = 1), 
     mtry = seq(round(length(sites)*.2), round(length(sites)*.5), by = 1), 
     KEEP.OUT.ATTRS = FALSE
   )

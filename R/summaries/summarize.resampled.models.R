@@ -87,3 +87,40 @@ MAE.all <-
                 mean.resid = round(mean(resid), 2)) |> 
       pivot_wider(names_from = best.age.bin, values_from = c(MAE, mean.resid))
   )
+
+age.dist.gam.ranAgeMeth <- 
+  filter(ran.age.distributions, 
+         method == 'svm' & model == 21) |> 
+  left_join(select(age.df, c(swfsc.id, age.confidence, age.best)))
+composite.age.dist <- lapply(1:nrow(age.df), function(i) {
+  crcAgeDist(age.df$swfsc.id[i], age.df, type = 'density') |> 
+    mutate(density = ifelse(age < age.df$age.min[i], 0, density),
+           density = ifelse(age > age.df$age.max[i], 0, density)) |> 
+    filter(age > age.df$age.min[i]-0.1 & age < age.df$age.max[i]+0.1)
+}) |>
+  bind_rows() |> 
+  left_join(select(age.df, c(swfsc.id, age.confidence)))
+age.dist <- lapply(2:5, function(cr){ 
+  ggplot(filter(age.dist.gam.ranAgeMeth, age.confidence == cr)) +
+    geom_histogram(aes(x = age.pred, after_stat(density), fill = factor(age.confidence)), show.legend = FALSE) + 
+    geom_vline(aes(xintercept = age.best), linetype = 'dashed', color = 'gray50') +
+    geom_line(aes(x = age, y = density), data = filter(composite.age.dist, age.confidence == cr), color = 'gray50') +
+#    geom_vline(aes(xintercept = age.pred), data = filter(pred.GAM.ranAgeMeth, age.confidence == cr)) +
+    #    geom_segment(aes(x = min(age), xend = min(age), y = 0, yend = age[1]), data = filter(composite.age.dist, age.confidence == cr), linetype = 'dotted', color = 'gray50') +
+    #    geom_vline(aes(xintercept = age.max), data = filter(pred.GAM.ranAgeMeth, age.confidence == cr), linetype = 'dotted', color = 'gray50') +
+    scale_fill_manual(values = conf.colors) +
+    facet_wrap(~swfsc.id, scales = 'free', nrow = 6)
+})
+pdf(file = 'R/summaries/forPerth/predicted.age.distributions.gam.ranAgeMeth.pdf')#, height = 2000, width = 2000)
+age.dist
+dev.off()
+
+ggplot(filter(age.dist.gam.ranAgeMeth, swfsc.id == 'z0033906')) +
+  geom_histogram(aes(x = age.pred, after_stat(density), fill = factor(age.confidence)), show.legend = FALSE) + 
+  geom_vline(aes(xintercept = age.best), linetype = 'dashed', color = 'gray50') +
+  geom_line(aes(x = age, y = density), data = filter(composite.age.dist, swfsc.id == 'z0033906'), color = 'gray50') +
+  #    geom_vline(aes(xintercept = age.pred), data = filter(pred.GAM.ranAgeMeth, age.confidence == cr)) +
+  #    geom_segment(aes(x = min(age), xend = min(age), y = 0, yend = age[1]), data = filter(composite.age.dist, age.confidence == cr), linetype = 'dotted', color = 'gray50') +
+  #    geom_vline(aes(xintercept = age.max), data = filter(pred.GAM.ranAgeMeth, age.confidence == cr), linetype = 'dotted', color = 'gray50') +
+  scale_fill_manual(values = conf.colors) 
+#  facet_wrap(~swfsc.id, scales = 'free')

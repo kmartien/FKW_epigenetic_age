@@ -297,7 +297,7 @@ fitTrainRF <- function(df, sites, resp, rf.params, age.transform) {
   )
 }
 
-predictTestRF <- function(fit, test.df, sites, resp, age.transform){
+predictTestRF <- function(fit, test.df, sites, resp, rf.params, age.transform){
 
   pred <- 
     if(is.null(fit)){
@@ -327,7 +327,7 @@ predictTestRF <- function(fit, test.df, sites, resp, age.transform){
 predictAllIDsRF <- function(train.df, model.df, sites, resp, rf.params, age.transform = 'none') {
   rbind( 
     # OOB predictions for training samples
-        predictTestRF(fit = NULL, train.df, sites, resp, age.transform),
+        predictTestRF(fit = NULL, train.df, sites, resp, rf.params, age.transform),
     # full model to predict test samples
     fitTrainRF(train.df, sites, resp, rf.params, age.transform) |> 
       predictTestSVM(filter(model.df, !swfsc.id %in% train.df$swfsc.id), sites, resp, age.transform)

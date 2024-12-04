@@ -11,14 +11,15 @@ nrep <- 1000
 ntree <- 5000
 ncores <- 10
 
-model.params <- filter(model.params, num.sites > 100)
+top.models <- readRDS('data/top.models.rds')
+model.params <- filter(model.params, model %in% top.models$rf)
 
 age.df <- age.df |>  
   filter(swfsc.id %in% ids.to.keep)
 
 age.df$ci.wt <- calc.ci.wt(age.df)
 
-lapply(10:nrow(model.params), function(i){
+lapply(1:nrow(model.params), function(i){
   print(i)
   print(date())
   params <- model.params[i,]
@@ -32,17 +33,19 @@ lapply(10:nrow(model.params), function(i){
   sites <- sites.to.keep
   if(sites.2.use != 'Allsites') sites <- selectCpGsites(sites.2.use, site.select.cr, weight, age.transform)
   
-  model.df <- age.df |> 
+  age.df <- age.df |> 
     mutate(
       wt = if(weight == 'ci.wt') ci.wt else {
         if (weight == 'CR') age.confidence else {
           if (weight == 'sn.wt') confidence.wt else 1
         }
-      }) |>
-    left_join(
-      rownames_to_column(logit.meth, var = 'swfsc.id'),
-      by = 'swfsc.id'
-    )
+      })
+  
+  model.df <- left_join(
+    age.df,
+    rownames_to_column(logit.meth, var = 'swfsc.id'),
+    by = 'swfsc.id'
+  )
   
   # age prediction
   train.df <- filter(model.df, age.confidence >= minCR)
@@ -59,29 +62,29 @@ lapply(10:nrow(model.params), function(i){
   
   # Best age and methylation estimates --------------------------------------
   
-  print('Best')
-  pred <- if(minCR == 2) {
-    # OOB predictions for training samples
-    predictTestRF(fit = NULL, train.df, sites, 'age.best', rf.params, age.transform)
-  } else {
-    predictAllIDsRF(train.df, model.df, sites, 'age.best', rf.params, age.transform)  
-  }
-  saveRDS(pred, paste0('R/rf/rf_best_minCR', minCR, '_', sites.2.use,'_cr', site.select.cr, '_', age.transform, '_', weight, '.rds'))
+  # print('Best')
+  # pred <- if(minCR == 2) {
+  #   # OOB predictions for training samples
+  #   predictTestRF(fit = NULL, train.df, sites, 'age.best', rf.params, age.transform)
+  # } else {
+  #   predictAllIDsRF(train.df, model.df, sites, 'age.best', rf.params, age.transform)
+  # }
+#  saveRDS(pred, paste0('R/rf/rf_best_minCR', minCR, '_', sites.2.use,'_cr', site.select.cr, '_', age.transform, '_', weight, '.rds'))
   
   # Random age and random methylation estimates -----------------------------
 
-  # print('RanAgeMeth')
-  # pred.ranAgeMeth <- parallel::mclapply(1:nrep, function(j) {
-  #   # random sample of ages and methylation
-  #   ran.df <- sampleAgeMeth(age.df, logit.meth.normal.params)
-  #   
-  #   if(minCR == 2) {
-  #     # OOB predictions for training samples
-  #     predictTestRF(fit = NULL, ran.df, sites, 'age.ran', age.transform)
-  #   } else {
-  #     predictAllIDsRF(filter(ran.df, age.confidence >= minCR), ran.df, sites, 'age.ran', rf.params, age.transform)
-  #   }
-  # }, mc.cores = ncores) |>
-  #   bind_rows()
-  # saveRDS(pred.ranAgeMeth, paste0('R/rf/rf_ranAgeMeth_minCR', minCR, '_', sites.2.use,'_cr', site.select.cr, '_', age.transform, '_', weight, '.rds'))
+  print('RanAgeMeth')
+  pred.ranAgeMeth <- parallel::mclapply(1:nrep, function(j) {
+    # random sample of ages and methylation
+    ran.df <- sampleAgeMeth(age.df, cpg) 
+
+    if(minCR == 2) {
+      # OOB predictions for training samples
+      predictTestRF(fit = NULL, ran.df, sites, 'age.ran', rf.params, age.transform)
+    } else {
+      predictAllIDsRF(filter(ran.df, age.confidence >= minCR), ran.df, sites, 'age.ran', rf.params, age.transform)
+    }
+  }, mc.cores = ncores) |>
+    bind_rows()
+  saveRDS(pred.ranAgeMeth, paste0('R/rf/rf_ranAgeMeth_minCR', minCR, '_', sites.2.use,'_cr', site.select.cr, '_', age.transform, '_', weight, '.rds'))
 })

@@ -8,7 +8,9 @@ load("data/model.params.rda")
 nrep <- 1000
 ncores <- 10
 
-model.params <- filter(model.params, model == 72)
+top.models <- readRDS('data/top.models.rds')
+model.params <- filter(model.params, model %in% top.models$gam &
+                         model != 72 & model != 75)
 
 age.df <- age.df |>  
   filter(swfsc.id %in% ids.to.keep)
@@ -29,18 +31,20 @@ lapply(1:nrow(model.params), function(i){
   sites <- sites.to.keep
   if(sites.2.use != 'Allsites') sites <- selectCpGsites(sites.2.use, site.select.cr, weight, age.transform)
 
-  model.df <- age.df |>
+  age.df <- age.df |> 
     mutate(
       wt = if(weight == 'ci.wt') ci.wt else {
         if (weight == 'CR') age.confidence else {
           if (weight == 'sn.wt') confidence.wt else 1
         }
-      }) |>
-  left_join(
+      })
+  
+  model.df <- left_join(
+    age.df,
     rownames_to_column(logit.meth, var = 'swfsc.id'),
     by = 'swfsc.id'
   )
-
+  
   # age prediction
   train.df <- filter(model.df, age.confidence >= minCR)
 

@@ -26,12 +26,11 @@ plot.loov.res <- function(loov.res, min.CR) {# expected argument is loov.res
     labs(x = "Age.best", y = "Predicted age") +
     annotation_custom(tableGrob(fit.sum[1, c('MAE', 'Corr')], theme = ttheme_minimal(base_size = 16), rows = NULL), xmin = 30, xmax = 40, ymin = 0, ymax = 10) +
     scale_color_manual(values = conf.colors, name = "Confidence") +
-    xlim(0,40) + ylim(0,60) +
-    theme_minimal() +
+#    xlim(0,40) + ylim(0,60) +
+#    theme_minimal() +
     theme(
       text = element_text(size = 20),
-      legend.position = c(0.2, 0.8),
-      plot.background = element_rect(color = "black", linewidth = 1)
+      legend.position = c(0.2, 0.8)
     )
   # for(i in 1:nrow(fit.sum)){
   #   cr <- i+(min.CR-1)

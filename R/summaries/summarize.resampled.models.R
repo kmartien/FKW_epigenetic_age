@@ -1,7 +1,6 @@
 library(tidyverse)
 library(ggplot2)
 library(gridExtra)
-#source("R/plotting.funcs.R")
 source('R/misc_funcs.R')
 load("data/model.params.rda")
 load('data/age_and_methylation_data.rdata')
@@ -42,52 +41,41 @@ ran.age.distributions <-
     }) |> bind_rows(),
     by = 'fname'
   ) |> select(-c(lci, uci, k))
+saveRDS(filter(ran.age.distributions, model == 21 & method == 'svm'), file = 'results/best_model_ran_age_distribution.rds')
 
 pred.ran <- 
   ran.age.distributions |> 
   filter(weight %in% wts.2.use, sites %in% sites.2.use) |> 
   group_by(model, method, age.transform, sites, weight, minCR, site.select.cr, swfsc.id) |> 
-  summarise(age.pred = modeest::venter(age.pred)) |> 
-  left_join(select(age.df, c(swfsc.id, age.best))) |> 
-  mutate(resid = age.pred - age.best,
-         dev = abs(resid),
-         sq.err = resid ^ 2,
-         best.age.bin = ifelse(age.best < 10, 0, ifelse(age.best < 25, 10, 25)),
-         pred.age.bin = ifelse(age.pred < 10, 0, ifelse(age.pred < 25, 10, 25))
-  ) 
-
-in.HDI <- ran.age.distributions |>
-  group_by(model, method, minCR, resample, sites, site.select.cr, weight, age.transform, swfsc.id) |> 
-  summarise(as.data.frame(rbind(HDInterval::hdi(age.pred)))
-  ) |> 
-  left_join(pred.ran) |> 
+  summarise(age.pred.ran.mode = modeest::venter(age.pred),
+            as.data.frame(rbind(HDInterval::hdi(age.pred)))) |>  
+  mutate(hdi.range = upper - lower) |> 
+  rename(lower.hdi = lower,
+         upper.hdi = upper)
+saveRDS(filter(pred.ran, model == 21 & method == 'svm'), file = 'results/best_model_pred_ran.rds')
+  
+in.HDI <- 
+  pred.ran |> 
   left_join(select(age.df, c(swfsc.id, age.best, age.confidence))) |> 
   filter(age.confidence > 3) |> 
   mutate(in.ci = age.best >= lower & age.best <= upper) |>
-  group_by(method, model, resample) |>
+  group_by(method, model) |>
   summarise(num.in.ci = sum(in.ci))
-in.HDI
 
-MAE.all <- 
+MAE.top.5.per.method <- 
   left_join(
-    pred.ran |> 
-      left_join(age.df) |> 
-      filter(age.confidence %in% c(4,5)) |> 
-      group_by(model, method, sites, weight, minCR, site.select.cr, age.transform) |> 
-      summarise(MAE = round(median(dev), 2),
-                lci = round(quantile(dev, probs = c(.25)),2),
-                uci = round(quantile(dev, probs = c(.75)),2),
-                Corr = round(cor.test(age.best, age.pred, method = "pearson")$estimate,2),
-                mean.resid = round(mean(resid), 2)),
-    pred.ran |> 
-      left_join(age.df) |> 
-      filter(age.confidence %in% c(4,5)) |> 
-      group_by(model, method, sites, weight, minCR, site.select.cr, age.transform, best.age.bin) |> 
-      summarise(MAE = round(median(dev), 2),
-                mean.resid = round(mean(resid), 2)) |> 
-      pivot_wider(names_from = best.age.bin, values_from = c(MAE, mean.resid))
-  )
+    in.HDI, 
+    read.csv('results_raw/MAE.all.csv')
+  ) |> 
+  select(c(method, model, num.in.ci, age.transform, sites, minCR, site.select.cr, 
+           weight, Corr, MAE, MAE_0, MAE_10, MAE_25, mean.resid, mean.resid_0, 
+           mean.resid_10, mean.resid_25,))
 
+write.csv(filter(MAE.top.5.per.method, weight != 'ci.wt'), file = 'results_raw/MAE.top.5.per.method.csv',
+          row.names = FALSE)
+
+
+  
 age.dist.gam.ranAgeMeth <- 
   filter(ran.age.distributions, 
          method == 'svm' & model == 21) |> 

@@ -57,6 +57,7 @@ MAE.all <-
     pred |> 
       left_join(age.df) |> 
       filter(age.confidence %in% c(4,5)) |> 
+      filter(weight != 'ci.wt') |> 
       group_by(model, method, sites, weight, minCR, site.select.cr, age.transform) |> 
   summarise(MAE = round(median(dev), 2),
                 lci = round(quantile(dev, probs = c(.25)),2),

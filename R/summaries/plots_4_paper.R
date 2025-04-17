@@ -180,13 +180,24 @@ p.loov <- df |>
   geom_errorbarh(aes(xmin = age.min, xmax = age.max, col = as.character(age.confidence)), height = 0) +
   geom_errorbar(aes(ymin = lower, ymax = upper, col = as.character(age.confidence)), width = 0) +
   geom_abline(slope = 1, color = "black", linewidth = 0.5, linetype = 2) +
+  annotation_custom(text_grob(label = paste0(
+    'Correlation\nCoefficient = ',
+    round(
+      cor.test(
+      formula = ~ age.best + age.pred, 
+      data = filter(df, age.confidence > 3),
+      method = "pearson")$estimate,
+      2)
+  ), size = 20), 
+  xmin = 20, ymax = 25,) +
+#  cor.coeff <- round(cor.test(dat$age.best, dat$age.pred, method = "pearson")$estimate,2)
   labs(x = "Age.best", y = "Predicted age") +
   scale_color_manual(values = conf.colors, name = "Confidence") +
   theme(
     text = element_text(size = 20),
     legend.position = c(0.2, 0.8)
   )
-jpeg(file = 'R/summaries/base.model.plot.jpg', width = 600, height = 600)
+jpeg(file = 'results_raw/base.model.plot.jpg', width = 600, height = 600)
 p.loov
 dev.off()
 
@@ -231,4 +242,127 @@ age.dist <- lapply(2:5, function(cr){
 pdf(file = 'R/summaries/forPerth/predicted.age.distributions.gam.ranAgeMeth.pdf')#, height = 2000, width = 2000)
 age.dist
 dev.off()
+
+# Compare duplicates
+
+df$date.biopsy <- as.POSIXct(age.df$date.biopsy, format = '%Y-%m-%d %H:%M:%S') |> 
+  as.Date()
+
+pair.sum <- lapply(
+  select(df, c(crc.id, swfsc.id, date.biopsy)) |> filter(n() > 1, .by = crc.id) |> 
+    pull(crc.id) |> 
+    unique(),
+  function(i){
+    inds <- filter(df, crc.id == i) |> arrange(date.biopsy)
+    data.frame(
+      crc.id = i,
+      old.ind = inds$swfsc.id[2], 
+      young.ind = inds$swfsc.id[1], 
+      old.cr = inds$age.confidence[2],
+      young.cr = inds$age.confidence[1],
+      actual.age.diff = difftime(inds$date.biopsy[2], inds$date.biopsy[1], units = "days") / 365,
+      predicted.age.diff = (inds$age.pred[2] - inds$age.pred[1])
+    )
+  }) |> bind_rows()
+
+ran_age_dist$iter <- do.call(c, lapply(1:1000, function(i){rep(i, 89)}))
+
+# Calculate difference in predicted ages in each iteration
+ran_age_diff <- pair.sum %>%
+  mutate(across(c(old.ind, young.ind), as.character)) %>%
+  rowwise() %>%
+  reframe(
+    crc.id = crc.id,
+    old.ind = old.ind,
+    young.ind = young.ind,
+    # Create rows for each iteration
+    iter = unique(ran_age_dist$iter),
+    age_pred_diff = 
+      ran_age_dist %>%
+      filter(swfsc.id == old.ind, iter == .data$iter) %>%
+      pull(age.pred) -
+      ran_age_dist %>%
+      filter(swfsc.id == young.ind, iter == .data$iter) %>%
+      pull(age.pred)
+  ) %>%
+  # Select and order desired columns
+  select(crc.id, old.ind, young.ind, age_pred_diff, iter) |> 
+  left_join(select(pair.sum, crc.id, actual.age.diff))
+
+prop_gt_zero <-
+  ran_age_diff |> 
+  filter(age_pred_diff > 0) |> 
+  group_by(crc.id) |> 
+  summarise(positive_diff = n()/1000)
+
+# plot distribution of age differences across iterations for each pair
+pair.diff.plot <- 
+  ggplot(ran_age_diff) +
+  geom_histogram(aes(x = age_pred_diff), position = 'identity') +
+  geom_vline(aes(xintercept = actual.age.diff), linewidth = 2) +
+  geom_vline(aes(xintercept = 0), linewidth = 2, linetype = 2) +
+  geom_text(
+    data = prop_gt_zero, 
+    aes(
+      x = -17, 
+      y = 200, 
+      label = round(positive_diff, 2)),
+    hjust = 0,
+    vjust = 0,
+    size = 10
+  ) +
+  labs(x = 'Predicted age difference', y = 'Count') +
+  theme(text = element_text(size = 35)) +
+  facet_wrap(~crc.id, ncol = 3) +
+  theme(
+    text = element_text(size = 35),
+    strip.background = element_blank(),
+    strip.text.x = element_blank()
+  )
+
+jpeg(filename = 'results_raw/pair_diff_plot.jpg', width = 1000, height = 1500)
+pair.diff.plot
+dev.off()
+
+# compare the predicted age probability distributions of young and old individuals from each pair
+pair.plot <- lapply(1:nrow(pair.sum), function(i){
+  ids <- pair.sum[i, c('old.ind', 'young.ind')]
+  ggplot(filter(age.dist.gam.ranAgeMeth, swfsc.id == ids$old.ind | swfsc.id == ids$young.ind)) +
+  geom_histogram(
+    aes(x = age.pred, 
+        fill = factor(age.confidence),
+        alpha = factor(swfsc.id),
+        color = factor(swfsc.id)),
+#        color = factor(swfsc.id)),
+    position = 'identity',
+    #      alpha = 0.8,
+    show.legend = FALSE) + 
+  scale_fill_manual(values = conf.colors) +
+#  scale_fill_manual(values = c('gray20', 'white')) +
+  scale_alpha_manual(values = c(1, 0.5)) +
+  scale_color_manual(values = c('transparent', 'black')) +
+#  scale_color_manual(values = c('transparent', 'darkgray')) +
+  geom_vline(
+    aes(xintercept = age.pred), 
+    data = filter(df, swfsc.id == ids$old.ind),
+    color = 'gray60') +
+  geom_vline(
+    aes(xintercept = age.pred), 
+    data = filter(df, swfsc.id == ids$young.ind),
+    color = 'gray20') +
+  annotation_custom(tableGrob(data.frame(
+    Difference = c(as.character(round(pair.sum$actual.age.diff[i], 2)), as.character(round(pair.sum$predicted.age.diff[i],2))),
+    row.names = c('Actual', 'Predicted')),
+    theme = ttheme_minimal(base_size = 16)), xmax = Inf, ymax = Inf) +
+    labs(x = element_blank(), y = element_blank()) +
+#  labs(x = 'Predicted age', y = 'Density') +
+#  theme_minimal() +
+  theme(text = element_text(size = 25))
+})
+pair.plot$ncol <- 3
+pair.plot$bottom <- 'Predicted age'
+pair.plot$left <- 'Density'
+jpeg(filename = 'results_raw/pair.plot.jpg', width = 1000, height = 1500)
+do.call(grid.arrange, pair.plot)
+dev.off()  
 
